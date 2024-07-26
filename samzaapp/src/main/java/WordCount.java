@@ -42,14 +42,21 @@ import org.apache.samza.system.kafka.descriptors.KafkaOutputDescriptor;
 import org.apache.samza.system.kafka.descriptors.KafkaSystemDescriptor;
 import org.apache.samza.util.CommandLine;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
+
 public class WordCount implements StreamApplication {
   private static final String KAFKA_SYSTEM_NAME = "kafka";
   private static final List<String> KAFKA_CONSUMER_ZK_CONNECT = ImmutableList.of("localhost:2181");
   private static final List<String> KAFKA_PRODUCER_BOOTSTRAP_SERVERS = ImmutableList.of("localhost:9092");
   private static final Map<String, String> KAFKA_DEFAULT_STREAM_CONFIGS = ImmutableMap.of("replication.factor", "1");
 
-  private static final String INPUT_STREAM_ID = "sample-text";
-  private static final String OUTPUT_STREAM_ID = "word-count-output";
+  private static final String INPUT_STREAM_ID = "sample-text-3";
+  private static final String OUTPUT_STREAM_ID = "word-count-output-3";
+
+  private static final int TARGET_WORD_COUNT = 100;
+  private static final AtomicInteger WC = new AtomicInteger(0);
+  private static final CountDownLatch SL = new CountDownLatch(1);
 
   @Override
   public void describe(StreamApplicationDescriptor streamApplicationDescriptor) {
@@ -71,6 +78,13 @@ public class WordCount implements StreamApplication {
     lines
         .map(kv -> kv.value)
         .flatMap(s -> Arrays.asList(s.split("\\W+")))
+        .filter(word -> {
+          if (WC.incrementAndGet() >= TARGET_WORD_COUNT) {
+            SL.countDown();
+            return false;
+          }
+          return true;
+        })
         .window(Windows.keyedSessionWindow(
           w -> w, Duration.ofSeconds(5), () -> 0, (m, prevCount) -> prevCount + 1,
           new StringSerde(), new IntegerSerde()), "count")
@@ -85,6 +99,12 @@ public class WordCount implements StreamApplication {
     Config config = cmdLine.loadConfig(options);
     LocalApplicationRunner runner = new LocalApplicationRunner(new WordCount(), config);
     runner.run();
-    runner.waitForFinish();
+    // runner.waitForFinish();
+    try {
+      SL.await();
+      runner.kill();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
   }
 }

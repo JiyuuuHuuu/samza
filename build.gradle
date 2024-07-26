@@ -97,7 +97,8 @@ rat {
     'samza-hdfs/src/main/resources/**',
     'samza-hdfs/src/test/resources/**',
     'out/**',
-    'state/**'
+    'state/**',
+    'samzaapp/**'
   ]
 }
 
